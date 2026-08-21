@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BlackBox M1 — Registro forense on-chain</title>
+<style>
+  :root {
+    --ink: #0a0e14;
+    --panel: #121820;
+    --panel-2: #1a222d;
+    --line: #26303d;
+    --text: #d6dee8;
+    --muted: #7c8a9c;
+    --sig: #3fd7a3;        /* verde señal: integridad */
+    --alert: #ff5c5c;      /* rojo: manipulación */
+    --amber: #f5b544;      /* pendiente */
+    --mono: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 0 20px 80px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header {
+    padding: 48px 0 32px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .brand h1 {
+    font-size: 26px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+  }
+  .brand .tag {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .net {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--sig);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 12px;
+    white-space: nowrap;
+  }
+
+  .lead {
+    padding: 28px 0;
+    color: var(--muted);
+    font-size: 15px;
+    max-width: 620px;
+  }
+  .lead strong { color: var(--text); font-weight: 600; }
+
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; }
+  button {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 550;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--text);
+    padding: 11px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, opacity .15s;
+  }
+  button:hover:not(:disabled) { border-color: var(--sig); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--sig); color: #04120c; border-color: var(--sig); font-weight: 650; }
+  button.primary:hover:not(:disabled) { opacity: .9; }
+
+  .wallet-status {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 32px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    word-break: break-all;
+  }
+  .wallet-status b { color: var(--sig); font-weight: 600; }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin: 36px 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-label::before {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--sig);
+    border-radius: 50%;
+  }
+
+  /* La cadena: el elemento firma */
+  .chain { display: flex; flex-direction: column; gap: 0; }
+  .link {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 22px;
+  }
+  .link:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 32px;
+    bottom: -22px;
+    width: 2px;
+    height: 22px;
+    background: linear-gradient(var(--sig), var(--line));
+  }
+  .link-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .link-idx {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--sig);
+    background: rgba(63,215,163,.1);
+    border: 1px solid rgba(63,215,163,.3);
+    border-radius: 6px;
+    padding: 3px 9px;
+  }
+  .link-meta { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .hash-line { font-family: var(--mono); font-size: 12px; margin-top: 6px; }
+  .hash-line .k { color: var(--muted); display: inline-block; width: 62px; }
+  .hash-line .v { color: var(--text); word-break: break-all; }
+  .link.tampered { border-color: var(--alert); }
+  .link.tampered .link-idx { color: var(--alert); background: rgba(255,92,92,.1); border-color: rgba(255,92,92,.3); }
+  .badge-broken { color: var(--alert); font-family: var(--mono); font-size: 11px; margin-left: auto; }
+  .badge-ok { color: var(--sig); font-family: var(--mono); font-size: 11px; margin-left: auto; }
+
+  .log {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #06090d;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+    max-height: 220px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .log .ok { color: var(--sig); }
+  .log .err { color: var(--alert); }
+  .log .info { color: var(--text); }
+
+  a.tx { color: var(--sig); text-decoration: none; border-bottom: 1px dotted; }
+  .empty { color: var(--muted); font-size: 14px; font-family: var(--mono); padding: 20px 0; }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  footer .scope { color: var(--amber); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>BlackBox M1</h1>
+      <div class="tag">Registro forense · dispositivos implantables</div>
+    </div>
+    <div class="net">SOLANA DEVNET</div>
+  </header>
+
+  <p class="lead">
+    Cada comando enviado a un dispositivo implantable se registra en una
+    <strong>cadena de hashes SHA-256 anclada on-chain</strong>. Alterar cualquier
+    evento del historial rompe la verificación criptográfica: el registro es
+    inmutable y toda manipulación es detectable.
+  </p>
+
+  <div class="wallet-status" id="walletStatus">Wallet no conectada.</div>
+
+  <div class="row">
+    <button class="primary" id="btnConnect">Conectar Phantom</button>
+    <button id="btnRun" disabled>Registrar cadena de eventos</button>
+    <button id="btnTamper" disabled>Simular manipulación</button>
+    <button id="btnReset" disabled>Reiniciar</button>
+  </div>
+
+  <div class="section-label">Cadena de eventos on-chain</div>
+  <div class="chain" id="chain">
+    <div class="empty">Sin eventos. Conecta la wallet y registra la cadena.</div>
+  </div>
+
+  <div class="section-label">Registro de ejecución</div>
+  <div class="log" id="log">Esperando conexión…</div>
+
+  <footer>
+    Program ID (Devnet): BFrtEXNKjvtfdr6eqHnMVS2HKnJzFLBQpobBbrdPgUAa<br />
+    <span class="scope">Alcance MVP:</span> demuestra integración on-chain y cadena
+    de hashes verificable. Separación PHI off-chain, FHIR y HL7 — fase siguiente.
+  </footer>
+
+</div>
+
+<!-- Dependencias vía CDN (sin build): solo web3.js y buffer -->
+<script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+<script src="https://bundle.run/buffer@6.0.3"></script>
+
+<script>
+// ============================================================================
+// BlackBox M1 - Frontend MVP (Devnet)
+// Conecta Phantom y ejecuta el flujo principal on-chain con @solana/web3.js
+// (sin Anchor: las instrucciones se serializan a mano con los discriminadores).
+// ============================================================================
+
+const PROGRAM_ID_STR = "BFrtEXNKjvtfdr6eqHnMVS2HKnJzFLBQpobBbrdPgUAa";
+
+const web3 = solanaWeb3;
+window.Buffer = window.Buffer || buffer.Buffer;
+const B = window.Buffer;
+
+const PROGRAM_ID = new web3.PublicKey(PROGRAM_ID_STR);
+const SYS_PROGRAM = web3.SystemProgram.programId;
+const connection = new web3.Connection("https://api.devnet.solana.com", "confirmed");
+
+// Discriminadores Anchor (primeros 8 bytes de sha256("global:<nombre_snake>"))
+const DISC = {
+  initializeRecord: [92, 106, 172, 44, 148, 3, 42, 251],
+  logVitals:        [27, 147, 150, 117, 232, 207, 181, 90],
+  emergencyPause:   [21, 143, 27, 142, 200, 181, 210, 255],
+};
+const ACCOUNT_DISC_LEN = 8;
+
+let localChain = [];
+let patientKp, doctorKp, imdKp;
+
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+function log(msg, cls = "") {
+  logEl.innerHTML += "\n" + (cls ? '<span class="' + cls + '">' + msg + '</span>' : msg);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function clearLog() { logEl.innerHTML = ""; }
+
+function u16LE(n) { const b = B.alloc(2); b.writeUInt16LE(n, 0); return b; }
+
+function sha256Hex(msg) {
+  const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
+  const bytes=[];
+  for(let i=0;i<msg.length;i++){let c=msg.charCodeAt(i);
+    if(c<0x80)bytes.push(c);
+    else if(c<0x800){bytes.push(0xc0|(c>>6),0x80|(c&0x3f));}
+    else if(c<0xd800||c>=0xe000){bytes.push(0xe0|(c>>12),0x80|((c>>6)&0x3f),0x80|(c&0x3f));}
+    else{i++;c=0x10000+(((c&0x3ff)<<10)|(msg.charCodeAt(i)&0x3ff));bytes.push(0xf0|(c>>18),0x80|((c>>12)&0x3f),0x80|((c>>6)&0x3f),0x80|(c&0x3f));}}
+  const l=bytes.length;bytes.push(0x80);
+  while(bytes.length%64!==56)bytes.push(0);
+  const bitLen=l*8;
+  for(let i=7;i>=0;i--)bytes.push((bitLen/Math.pow(2,i*8))&0xff);
+  const rotr=(x,n)=>(x>>>n)|(x<<(32-n));
+  for(let j=0;j<bytes.length;j+=64){
+    const w=new Array(64);
+    for(let i=0;i<16;i++)w[i]=(bytes[j+i*4]<<24)|(bytes[j+i*4+1]<<16)|(bytes[j+i*4+2]<<8)|bytes[j+i*4+3];
+    for(let i=16;i<64;i++){const s0=rotr(w[i-15],7)^rotr(w[i-15],18)^(w[i-15]>>>3);const s1=rotr(w[i-2],17)^rotr(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)|0;}
+    let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;
+    for(let i=0;i<64;i++){const S1=rotr(e,6)^rotr(e,11)^rotr(e,25);const ch=(e&f)^(~e&g);const t1=(h+S1+ch+K[i]+w[i])|0;const S0=rotr(a,2)^rotr(a,13)^rotr(a,22);const maj=(a&b)^(a&c)^(b&c);const t2=(S0+maj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;}
+    h0=(h0+a)|0;h1=(h1+b)|0;h2=(h2+c)|0;h3=(h3+d)|0;h4=(h4+e)|0;h5=(h5+f)|0;h6=(h6+g)|0;h7=(h7+h)|0;
+  }
+  const hx=(x)=>(x>>>0).toString(16).padStart(8,"0");
+  return hx(h0)+hx(h1)+hx(h2)+hx(h3)+hx(h4)+hx(h5)+hx(h6)+hx(h7);
+}
+
+function ixInitializeRecord(pda, aseguradora, patient, doctor, maxDose, gMin, gMax, imdPubkey) {
+  const data = B.concat([ B.from(DISC.initializeRecord), u16LE(maxDose), u16LE(gMin), u16LE(gMax), imdPubkey.toBuffer() ]);
+  return new web3.TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: pda, isSigner: false, isWritable: true },
+      { pubkey: aseguradora, isSigner: true, isWritable: true },
+      { pubkey: patient, isSigner: true, isWritable: false },
+      { pubkey: doctor, isSigner: true, isWritable: false },
+      { pubkey: SYS_PROGRAM, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+function ixLogVitals(pda, patient, imdDevice, glucose, insulin) {
+  const data = B.concat([ B.from(DISC.logVitals), u16LE(glucose), u16LE(insulin) ]);
+  return new web3.TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: pda, isSigner: false, isWritable: true },
+      { pubkey: patient, isSigner: false, isWritable: false },
+      { pubkey: imdDevice, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+
+// Layout MedicalRecord: disc(8) patient(32) doctor(32) imd(32) 5x u16(10)
+//   lastTimestamp(i64,8) totalLogs(u64,8) isActive(1) schemaVersion(1)
+//   lastEventHash(string: len u32(4) + bytes)
+function decodeRecord(buf) {
+  let o = ACCOUNT_DISC_LEN + 32*3 + 2*5;
+  const lastTimestamp = buf.readBigInt64LE(o); o += 8;
+  const totalLogs = buf.readBigUInt64LE(o); o += 8;
+  o += 1 + 1;
+  const hashLen = buf.readUInt32LE(o); o += 4;
+  const lastEventHash = buf.slice(o, o + hashLen).toString("utf8");
+  return { lastTimestamp: Number(lastTimestamp), totalLogs: Number(totalLogs), lastEventHash };
+}
+
+async function sendTx(instructions, extraSigners) {
+  const tx = new web3.Transaction().add(...instructions);
+  tx.feePayer = window.solana.publicKey;
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  if (extraSigners && extraSigners.length) tx.partialSign(...extraSigners);
+  const signed = await window.solana.signTransaction(tx);
+  const sig = await connection.sendRawTransaction(signed.serialize());
+  await connection.confirmTransaction(sig, "confirmed");
+  return sig;
+}
+
+async function connect() {
+  try {
+    if (!window.solana || !window.solana.isPhantom) {
+      log("Phantom no detectada. Instala la extension desde phantom.app", "err");
+      return;
+    }
+    const resp = await window.solana.connect();
+    const pubkey = resp.publicKey.toString();
+    $("walletStatus").innerHTML = "Wallet conectada: <b>" + pubkey + "</b>";
+    $("btnRun").disabled = false;
+    $("btnConnect").textContent = "Conectada";
+    $("btnConnect").disabled = true;
+    clearLog();
+    log("Wallet conectada.", "ok");
+    log("Conectado a Solana Devnet.", "info");
+    const bal = await connection.getBalance(resp.publicKey);
+    log("Balance: " + (bal / web3.LAMPORTS_PER_SOL).toFixed(4) + " SOL");
+    if (bal === 0) log("Balance 0 - pide SOL en faucet.solana.com (red Devnet) para firmar.", "err");
+  } catch (e) {
+    log("Error al conectar: " + (e.message || e), "err");
+    console.error(e);
+  }
+}
+
+async function runFlow() {
+  $("btnRun").disabled = true;
+  try {
+    patientKp = web3.Keypair.generate();
+    doctorKp = web3.Keypair.generate();
+    imdKp = web3.Keypair.generate();
+    localChain = [];
+
+    const [pda] = web3.PublicKey.findProgramAddressSync(
+      [B.from("blackbox"), patientKp.publicKey.toBuffer()], PROGRAM_ID
+    );
+    log("\nExpediente PDA: " + pda.toBase58(), "info");
+
+    log("Inicializando expediente...");
+    const initSig = await sendTx(
+      [ixInitializeRecord(pda, window.solana.publicKey, patientKp.publicKey, doctorKp.publicKey, 30, 70, 180, imdKp.publicKey)],
+      [patientKp, doctorKp]
+    );
+    log("Expediente inicializado. tx " + initSig.slice(0, 16) + "...", "ok");
+
+    const readings = [ {g:120,i:15}, {g:122,i:12}, {g:119,i:14} ];
+    let prevHash = "0".repeat(64);
+
+    for (let n = 0; n < readings.length; n++) {
+      const r = readings[n];
+      log("Registrando vital #" + (n+1) + " (glucosa " + r.g + ", insulina " + r.i + ")...");
+      const sig = await sendTx([ixLogVitals(pda, patientKp.publicKey, imdKp.publicKey, r.g, r.i)], [imdKp]);
+
+      let acc = await connection.getAccountInfo(pda);
+      let rec = decodeRecord(acc.data);
+      let tries = 0;
+      while (rec.totalLogs < n + 1 && tries < 10) {
+        acc = await connection.getAccountInfo(pda);
+        rec = decodeRecord(acc.data);
+        tries++;
+      }
+      const ts = rec.lastTimestamp, logIndex = rec.totalLogs;
+      const eventData = prevHash + ":" + patientKp.publicKey.toBase58() + ":" + imdKp.publicKey.toBase58() + ":" + r.g + ":" + r.i + ":" + ts + ":" + logIndex;
+      const eventHash = sha256Hex(eventData);
+      const onChain = rec.lastEventHash;
+
+      localChain.push({ idx: logIndex, glucose: r.g, insulin: r.i, ts, previousHash: prevHash, eventHash, onChain, match: eventHash === onChain, sig });
+      log("Vital #" + logIndex + " anclado. on-chain " + (eventHash === onChain ? "COINCIDE" : "difiere") + ".", eventHash === onChain ? "ok" : "err");
+      prevHash = eventHash;
+    }
+
+    renderChain(false);
+    $("btnTamper").disabled = false;
+    $("btnReset").disabled = false;
+    log("\nCadena registrada y verificada on-chain.", "ok");
+  } catch (e) {
+    log("Error en el flujo: " + (e.message || e), "err");
+    console.error(e);
+    $("btnRun").disabled = false;
+  }
+}
+
+function renderChain(tampered) {
+  const chainEl = $("chain");
+  if (localChain.length === 0) { chainEl.innerHTML = '<div class="empty">Sin eventos.</div>'; return; }
+  let prev = "0".repeat(64);
+  const rows = localChain.map((ev, i) => {
+    const g = tampered && i === 1 ? 200 : ev.glucose;
+    const data = prev + ":" + patientKp.publicKey.toBase58() + ":" + imdKp.publicKey.toBase58() + ":" + g + ":" + ev.insulin + ":" + ev.ts + ":" + ev.idx;
+    const recomputed = sha256Hex(data);
+    const ok = recomputed === ev.onChain;
+    prev = recomputed;
+    const cls = ok ? "" : "tampered";
+    const badge = ok ? '<span class="badge-ok">verificado</span>' : '<span class="badge-broken">manipulacion detectada</span>';
+    const gShown = tampered && i === 1 ? '<span style="color:var(--alert)">' + g + '</span> (real: ' + ev.glucose + ')' : g;
+    const explorer = "https://explorer.solana.com/tx/" + ev.sig + "?cluster=devnet";
+    return '<div class="link ' + cls + '">' +
+      '<div class="link-head"><span class="link-idx">EVENTO ' + ev.idx + '</span>' +
+      '<span class="link-meta">glucosa ' + gShown + ' &middot; insulina ' + ev.insulin + '</span>' + badge + '</div>' +
+      '<div class="hash-line"><span class="k">prev</span><span class="v">' + ev.previousHash.slice(0,32) + '...</span></div>' +
+      '<div class="hash-line"><span class="k">hash</span><span class="v">' + ev.onChain.slice(0,48) + '...</span></div>' +
+      '<div class="hash-line"><span class="k">tx</span><a class="tx" href="' + explorer + '" target="_blank">ver en Solana Explorer</a></div>' +
+      '</div>';
+  }).join("");
+  chainEl.innerHTML = rows;
+}
+
+function tamper() {
+  renderChain(true);
+  log("\nManipulacion simulada: se altero la glucosa del evento 2 (122 -> 200).", "err");
+  log("El evento alterado y los posteriores dejan de coincidir con el hash on-chain.", "err");
+  log("Inmutabilidad demostrada: el historial anclado es la unica version valida.", "ok");
+}
+
+function reset() {
+  renderChain(false);
+  log("\nVista restaurada a la cadena integra.", "ok");
+}
+
+$("btnConnect").onclick = connect;
+$("btnRun").onclick = runFlow;
+$("btnTamper").onclick = tamper;
+$("btnReset").onclick = reset;
+</script>
+</body>
+</html>
