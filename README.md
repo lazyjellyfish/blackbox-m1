@@ -11,9 +11,9 @@ emergencia y generación de prueba de auditoría.
 
 ## Demo en vivo (Devnet)
 
-- **Frontend (MVP navegable):** _[link de Vercel aquí]_
-- **Program ID (Solana Devnet):** `PEGA_AQUI_TU_PROGRAM_ID`
-- **Video de demostración:** _[link al video aquí]_
+- **Frontend (MVP navegable): **https://blackbox-m1-six.vercel.app/
+- **Program ID (Solana Devnet):** BFrtEXNKjvtfdr6eqHnMVS2HKnJzFLBQpobBbrdPgUAa
+- **Video de demostración:** https://drive.google.com/file/d/1aPM6MuNGG9-Hc_PvYkU0MOMvivp-xpzo/view?usp=drive_link
 
 ## Módulos
 
